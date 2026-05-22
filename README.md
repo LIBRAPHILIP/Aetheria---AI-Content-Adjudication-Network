@@ -1,2 +1,20 @@
-# Aetheria---AI-Content-Adjudication-Network
-Aetheria’s monetization strategy is designed to capture value across the entire AI content lifecycle—from creation and certification to dispute resolution and enterprise integration. By leveraging GenLayer’s unique adjudication capabilities, Aetheria can offer services that traditional platforms cannot, creating multiple revenue stre
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
+
+# Run and deploy your AI Studio app
+
+This contains everything you need to run your app locally.
+
+View your app in AI Studio: https://ai.studio/apps/2eed5e30-f97f-433e-9b09-f4ca7033ff0a
+
+## Run Locally
+
+**Prerequisites:**  Node.js
+
+
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`

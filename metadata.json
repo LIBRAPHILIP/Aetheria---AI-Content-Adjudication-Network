@@ -1,0 +1,8 @@
+{
+  "name": "GenLayer Intelligence Hub",
+  "description": "Benchmark, Audit, and Specialize GenLayer Intelligent Contracts with performance analytics and security vulnerability mapping.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Google AI Studio App</title>
+    <script>
+      (function() {
+        try {
+          const originalDefineProperty = Object.defineProperty;
+          Object.defineProperty = function(obj, prop, descriptor) {
+            try {
+              return originalDefineProperty.apply(this, arguments);
+            } catch (err) {
+              if (prop === 'ethereum') {
+                console.warn("Bypassed non-configurable redefinition for 'ethereum':", err);
+                return obj;
+              }
+              throw err;
+            }
+          };
+
+          const originalDefineProperties = Object.defineProperties;
+          Object.defineProperties = function(obj, props) {
+            try {
+              return originalDefineProperties.apply(this, arguments);
+            } catch (err) {
+              if (props && Object.prototype.hasOwnProperty.call(props, 'ethereum')) {
+                console.warn("Bypassed non-configurable defineProperties for 'ethereum':", err);
+                for (const key in props) {
+                  if (Object.prototype.hasOwnProperty.call(props, key)) {
+                    try {
+                      originalDefineProperty(obj, key, props[key]);
+                    } catch (e) {
+                      console.warn(`Bypassed safe definition failure for key: ${key}`, e);
+                    }
+                  }
+                }
+                return obj;
+              }
+              throw err;
+            }
+          };
+        } catch (e) {
+          console.error("Failed to inject ethereum redefinition guard:", e);
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
