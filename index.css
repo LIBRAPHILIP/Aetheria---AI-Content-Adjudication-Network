@@ -1,0 +1,82 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Space Grotesk", sans-serif;
+}
+
+/* Base resets & theme styles */
+body, html {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  background-color: #060709;
+  color: #f1f5f9;
+}
+
+/* Custom interactive cyber backdrop grid */
+.bg-grid-cyber {
+  background-position: center;
+  background-image: 
+    radial-gradient(rgba(99, 102, 241, 0.05) 1px, transparent 1px),
+    linear-gradient(to right, rgba(99, 102, 241, 0.01) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(99, 102, 241, 0.01) 1px, transparent 1px);
+  background-size: 24px 24px, 48px 48px, 48px 48px;
+}
+
+/* Ambient glow radial rings */
+.ambient-glow-1 {
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.12) 0%, transparent 70%);
+}
+.ambient-glow-2 {
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, transparent 65%);
+}
+.ambient-glow-3 {
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.06) 0%, transparent 60%);
+}
+
+/* Active validator glow animations */
+@keyframes border-glow-pulse {
+  0%, 100% {
+    border-color: rgba(99, 102, 241, 0.35);
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.15), inset 0 0 4px rgba(99, 102, 241, 0.08);
+  }
+  50% {
+    border-color: rgba(129, 140, 248, 0.85);
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.35), inset 0 0 8px rgba(99, 102, 241, 0.15);
+  }
+}
+
+.active-border-pulse {
+  animation: border-glow-pulse 2s infinite ease-in-out;
+  border-width: 1px;
+}
+
+/* Soft text shimmer */
+@keyframes text-shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.text-shimmer-effect {
+  background: linear-gradient(120deg, #ffffff, #a5b4fc, #ec4899, #a5b4fc, #ffffff);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer 4s linear infinite;
+}
+
+/* Custom sleek dev scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #060709;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
