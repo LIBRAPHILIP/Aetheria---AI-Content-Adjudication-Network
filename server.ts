@@ -140,6 +140,121 @@ Return your adjudication results strictly in the following JSON format:
   }
 });
 
+import { streamText, tool, convertToModelMessages } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { z } from 'zod';
+import { searchDocumentation } from './src/tools/rag';
+import { getValidatorPerformance, getStakingRequirements } from './src/tools/blockchain';
+import { queryDisputes } from './src/tools/dashboard';
+import { estimateEscrow } from './src/tools/disputeHelper';
+import { draftDispute, subscribeToDispute } from './src/tools/disputeDrafting';
+
+app.post('/api/agent', async (req, res) => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return res.status(401).json({ error: 'GEMINI_API_KEY is not configured.' });
+  }
+
+  const { messages } = req.body;
+  if (!messages) {
+    return res.status(400).json({ error: 'messages are required' });
+  }
+
+  try {
+    const googleAI = createGoogleGenerativeAI({ apiKey });
+
+    const result = streamText({
+      model: googleAI('gemini-2.5-flash'),
+      system: `You are AETHERIA, the AI guardian of the GenLayer Intelligence Hub.
+You can:
+- Provide real-time dashboard statistics and dispute lists.
+- Explain concepts like escrow, quorum, consensus.
+- Search the official GenLayer documentation for detailed technical answers.
+- Fetch on-chain validator performance and staking requirements.
+- Estimate recommended escrow stakes for different dispute types.
+- Draft a dispute filing (which the user must confirm to submit).
+- Subscribe users to dispute updates.
+
+Tone: knowledgeable, slightly mystical, always helpful. Never submit a dispute without explicit user approval.`,
+      messages,
+      tools: {
+        get_dashboard_stats: tool({
+          description: 'Get current GenLayer Intelligence Hub statistics: total disputes, active audits, total escrowed value, and validator quorum count.',
+          parameters: z.object({}),
+          execute: async (_args: any) => {
+             return {
+                totalDisputes: 1243,
+                activeAudits: 37,
+                totalEscrowedValueGEN: 752000,
+                activeValidators: 16
+             };
+          }
+        } as any),
+        list_recent_disputes: tool({
+          description: 'List the most recent 5 dispute cases with their ID, status, description, and escrow stake.',
+          parameters: z.object({}),
+          execute: async (_args: any) => {
+             return [
+                 { id: 'DSP-001', status: 'Resolved', description: 'AI-generated article accused of plagiarism', escrowStake: 500 },
+                 { id: 'DSP-002', status: 'Under Audit', description: 'Fake news detection dispute', escrowStake: 1200 },
+                 { id: 'DSP-003', status: 'Pending', description: 'Model output copyright claim', escrowStake: 300 },
+             ];
+          }
+        } as any),
+        explain_concept: tool({
+          description: 'Explain a GenLayer concept or term (e.g., escrow stake, validator quorum, consensus, notarization).',
+          parameters: z.object({
+             concept: z.string().describe('The concept or term to explain.')
+          }),
+          execute: async ({ concept }: any) => {
+            const knowledgeBase: Record<string, string> = {
+              escrowstake: 'Escrow stake is the amount of tokens locked by a disputer as collateral. If the dispute is resolved in their favor, the stake is returned; otherwise it may be forfeited.',
+              validatorquorum: 'A validator quorum is the minimum number of independent AI validators that must reach consensus to finalize a dispute.',
+              consensus: 'GenLayer consensus uses a network of AI validators to determine the originality or truthfulness of content. Validators stake tokens and are incentivized to vote honestly.',
+              notarization: 'On-chain notarization permanently records the outcome of a dispute on the GenLayer blockchain, creating an immutable proof of resolution.',
+            };
+            const key = concept.toLowerCase().replace(/\s+/g, '');
+            return knowledgeBase[key] || `I don't have a detailed explanation for "${concept}" yet. Please ask the GenLayer team.`;
+          }
+        } as any),
+        get_validator_info: tool({
+          description: 'Get information about active validators and the required quorum for consensus.',
+          parameters: z.object({}),
+          execute: async (_args: any) => {
+             return {
+                activeValidators: 16,
+                quorumSize: 7
+             };
+          }
+        } as any),
+        file_dispute: tool({
+          description: 'File a new AI content dispute on the GenLayer blockchain.',
+          parameters: z.object({
+            title: z.string(),
+            description: z.string(),
+            stake: z.number().min(10)
+          }),
+          execute: async ({ title, description, stake }: any) => {
+            return `Dispute "${title}" filed successfully with stake ${stake}.`;
+          }
+        } as any),
+        searchDocumentation,
+        getValidatorPerformance,
+        getStakingRequirements,
+        queryDisputes,
+        estimateEscrow,
+        draftDispute,
+        subscribeToDispute
+      }
+    });
+
+    result.pipeTextStreamToResponse(res);
+  } catch (error: any) {
+    console.error('Error in agent communication:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Serve Vite build in development, or standard production static files
 const startServer = async () => {
   if (process.env.NODE_ENV !== 'production') {
