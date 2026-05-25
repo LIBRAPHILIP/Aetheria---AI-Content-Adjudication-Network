@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import { 
   Activity, 
   ShieldCheck, 
@@ -35,20 +35,17 @@ import {
   Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { jsPDF } from 'jspdf';
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  BarChart,
-  Bar
-} from 'recharts';
 import Markdown from 'react-markdown';
+
+// Lazy load the charts for code splitting
+const LazyChartWrapper = lazy(() => import('./components/ChartWrapper'));
 import { cn } from './lib/utils';
+import { Tooltip } from './components/Tooltip';
+import MetricCard from './components/MetricCard';
+import FileDisputeModal from './components/FileDisputeModal';
+import ValidatorNodeGraph from './components/ValidatorNodeGraph';
+import AetheriaAgentChat from './components/AetheriaAgentChat';
+import toast, { Toaster } from 'react-hot-toast';
 import { 
   DISPUTE_TEMPLATES, 
   INITIAL_DISPUTES, 
@@ -56,7 +53,7 @@ import {
   Dispute 
 } from './data';
 
-type View = 'overview' | 'submit' | 'arena' | 'specs' | 'monetization';
+type View = 'overview' | 'submit' | 'arena' | 'specs' | 'monetization' | 'about';
 
 // Monthly timeline data of resolved disputes & transaction volume
 const TREND_DATA = [
@@ -132,8 +129,23 @@ const TOP_VALIDATORS = [
 
 export default function App() {
   const [activeView, setActiveView] = useState<View>('overview');
+  const [isNavigating, setIsNavigating] = useState(false);
   const [disputes, setDisputes] = useState<Dispute[]>(INITIAL_DISPUTES);
   const [selectedDispute, setSelectedDispute] = useState<Dispute | null>(INITIAL_DISPUTES[0]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'RESOLVED' | 'UNDER_AUDIT'>('ALL');
+  
+  const filteredDisputes = useMemo(() => {
+    return disputes.filter(disp => {
+      const query = searchQuery.toLowerCase();
+      const matchesSearch = disp.id.toLowerCase().includes(query) ||
+                            disp.claimant.toLowerCase().includes(query) ||
+                            disp.respondent.toLowerCase().includes(query) ||
+                            disp.description.toLowerCase().includes(query);
+      const matchesStatus = statusFilter === 'ALL' || disp.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [disputes, searchQuery, statusFilter]);
   
   // Create New Dispute States
   const [newClaimant, setNewClaimant] = useState('');
@@ -142,6 +154,8 @@ export default function App() {
   const [newDescription, setNewDescription] = useState('');
   const [newEvidence, setNewEvidence] = useState('');
   const [newStaking, setNewStaking] = useState(500);
+
+  const [isFileModalOpen, setIsFileModalOpen] = useState(false);
 
   // Simulation State
   const [isSimulating, setIsSimulating] = useState(false);
@@ -156,22 +170,6 @@ export default function App() {
   const [x402SelectedProvider, setX402SelectedProvider] = useState<'web3' | 'agent-wallet' | 'gen-governance'>('web3');
   const [x402Logs, setX402Logs] = useState<string[]>([]);
   const [x402SimulateFailure, setX402SimulateFailure] = useState(false);
-
-  // Monetization Interactive States
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
-
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    setToast({ message, type });
-  };
-
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => {
-        setToast(null);
-      }, 4500);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
 
   // Click-away listener to dismiss open validator tooltips
   useEffect(() => {
@@ -194,7 +192,7 @@ export default function App() {
     setApiTestLogs(["⏳ Initializing Enterprise API socket connection..."]);
 
     const logsList = [
-      "🔗 Establishing secure SSL tunnel to api.aetheria.network...",
+      "🔗 Establishing secure SSL tunnel to api.genlayer.network...",
       "🛡️ Verifying API authentication signature (Secret Token Hash)...",
       "📦 Packaging request payload: { threshold: 85, mediaHash: 'ipfs://QmR6e4...' }",
       "⚡ Dispatching verification task to GenLayer Decentralized Ledger...",
@@ -212,7 +210,7 @@ export default function App() {
       } else {
         clearInterval(interval);
         setApiTestStatus('completed');
-        showToast("API sandbox execution succeeded! HTTP 200 OK. Originality verified.", "success");
+        toast.success("API sandbox execution succeeded! HTTP 200 OK. Originality verified.");
       }
     }, 300);
   };
@@ -225,6 +223,18 @@ export default function App() {
   const [montyEnterpriseWeb, setMontyEnterpriseWeb] = useState(35000);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [activeMonetizationTab, setActiveMonetizationTab] = useState<'revenue' | 'tiers' | 'enterprise' | 'ecosystem' | 'calculator'>('revenue');
+
+  const handleNavigate = (view: View, focusDispute?: Dispute) => {
+    if (isNavigating) return;
+    setIsNavigating(true);
+    if (focusDispute) {
+      setSelectedDispute(focusDispute);
+    }
+    setTimeout(() => {
+      setActiveView(view);
+      setIsNavigating(false);
+    }, 450);
+  };
 
   // Originality Certification States
   const [certTitle, setCertTitle] = useState('');
@@ -266,7 +276,7 @@ export default function App() {
       "🪙 Verifying 15 GEN mint transaction on GenLayer...",
       "⚡ Transmitting payload to " + NETWORK_METRICS.activeValidators + " consensus validators...",
       "📜 Confirming ERC-8004 trustless metadata standard...",
-      "🛡️ Cryptographic Aetheria Notary seal finalized!"
+      "🛡️ Cryptographic GenLayer Notary seal finalized!"
     ];
 
     let currentStep = 0;
@@ -310,7 +320,7 @@ export default function App() {
     const steps = [
       "🔐 Establishing secure connection via " + (
         x402SelectedProvider === 'web3' ? "Browser Wallet Proxy (Metamask/Rabby)" : 
-        x402SelectedProvider === 'agent-wallet' ? "Aetheria Agent Autonomous Wallet" : 
+        x402SelectedProvider === 'agent-wallet' ? "GenLayer Agent Autonomous Wallet" : 
         "GenLayer Core Signer Pool"
       ) + "...",
       "🔑 Authorizing cryptographic dispute registration signature...",
@@ -376,6 +386,7 @@ export default function App() {
     { id: 'arena', name: 'Adjudication Arena', icon: Scale },
     { id: 'specs', name: 'GenLayer Architecture', icon: Layers },
     { id: 'monetization', name: 'Monetization Model', icon: Coins },
+    { id: 'about', name: 'About GenLayer', icon: Info },
   ];
 
   // Auto-scroll simulation progress logs
@@ -420,7 +431,7 @@ export default function App() {
   const handleCreateDispute = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClaimant || !newRespondent || !newDescription || !newEvidence) {
-      showToast("Please provide all required claim variables.", "error");
+      toast.error("Please provide all required claim variables.");
       return;
     }
 
@@ -492,15 +503,17 @@ export default function App() {
 
     } catch (error) {
       console.error(error);
-      showToast("Verification could not be processed, reverting dispute status to queue.", "error");
+      toast.error("Verification could not be processed, reverting dispute status to queue.");
     } finally {
       setIsSimulating(false);
     }
   };
 
   // Export adjudication details, legal analyses, votes and scores to PDF
-  const exportToPDF = (dispute: Dispute) => {
+  const exportToPDF = async (dispute: Dispute) => {
     try {
+      toast.success("Preparing document generation...");
+      const { jsPDF } = await import('jspdf');
       const doc = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
@@ -508,7 +521,8 @@ export default function App() {
       });
 
       // Clear markdown bold/italic/code block markers
-      const cleanMarkdown = (text: string) => {
+      const cleanMarkdown = (text?: string) => {
+        if (!text) return '';
         return text
           .replace(/\*\*(.*?)\*\*/g, '$1') // bold
           .replace(/\*(.*?)\*/g, '$1')     // italic
@@ -530,7 +544,7 @@ export default function App() {
           doc.setFontSize(8);
           doc.setFont("Helvetica", "italic");
           doc.setTextColor(148, 163, 184); // slate-400
-          doc.text(`Case ID: ${dispute.id} | Aetheria Dispute Adjudication | Page ${doc.getNumberOfPages()}`, margin, 12);
+          doc.text(`Case ID: ${dispute.id} | GenLayer Dispute Adjudication | Page ${doc.getNumberOfPages()}`, margin, 12);
           doc.setDrawColor(226, 232, 240); // slate-200
           doc.setLineWidth(0.2);
           doc.line(margin, 15, pageWidth - margin, 15);
@@ -546,7 +560,7 @@ export default function App() {
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(18);
       doc.setTextColor(255, 255, 255);
-      doc.text("AETHERIA", margin, 16);
+      doc.text("GENLAYER", margin, 16);
 
       doc.setFont("Helvetica", "normal");
       doc.setFontSize(9);
@@ -620,7 +634,7 @@ export default function App() {
       doc.text("Protocol Ver:", margin + 85, currentY + 23);
       doc.setFont("Helvetica", "bold");
       doc.setTextColor(15, 23, 42);
-      doc.text("Aetheria-Core-v1.4", margin + 118, currentY + 23);
+      doc.text("GenLayer-Core-v1.4", margin + 118, currentY + 23);
 
       currentY += 40;
 
@@ -874,21 +888,24 @@ export default function App() {
       doc.setFont("Courier", "normal");
       doc.setFontSize(7.5);
       doc.setTextColor(148, 163, 184); // slate-400
-      doc.text(`AETHERIA-PROOF-VERIFIED: ${dispute.id}-GENLAYER-CONSENSUS-VERIFIED-RECORD-SHA256HASH-OK`, margin, currentY + 4);
+      doc.text(`GENLAYER-PROOF-VERIFIED: ${dispute.id}-GENLAYER-CONSENSUS-VERIFIED-RECORD-SHA256HASH-OK`, margin, currentY + 4);
 
       // Save standard PDF
-      const docPathName = `Aetheria_Adjudication_Report_${dispute.id}.pdf`;
+      const docPathName = `GenLayer_Adjudication_Report_${dispute.id}.pdf`;
       doc.save(docPathName);
-      showToast(`Adjudication report PDF generated & downloaded successfully!`, "success");
+      toast.success("Adjudication report PDF generated & downloaded successfully!");
 
     } catch (err) {
       console.error(err);
-      showToast("Could not generate PDF report. Verification error.", "error");
+      toast.error("Could not generate PDF report. Verification error.");
     }
   };
 
   return (
     <div className="flex h-screen bg-[#060709] text-slate-100 font-sans antialiased overflow-hidden select-none relative">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-0 focus:left-0 focus:bg-indigo-600 focus:text-white focus:px-4 focus:py-2 focus:z-[999] border-2 border-indigo-400 font-bold tracking-wide">
+        Skip to main content
+      </a>
       
       {/* Background modern tech grid & ambient glow elements */}
       <div className="absolute inset-0 bg-grid-cyber pointer-events-none opacity-45 z-0" />
@@ -897,23 +914,23 @@ export default function App() {
       <div className="absolute top-[35%] left-[30%] w-[35%] h-[35%] rounded-full ambient-glow-3 pointer-events-none opacity-25 blur-[110px] z-0" />
 
       {/* Visual Workspace Sidebar */}
-      <aside className="w-80 border-r border-[#1E232F]/50 bg-[#0B0D13]/85 backdrop-blur-xl flex flex-col justify-between shrink-0 relative z-10">
+      <nav role="navigation" aria-label="Sidebar Navigation" className="w-80 border-r border-[#1E232F]/50 bg-[#0B0D13]/85 backdrop-blur-xl flex flex-col justify-between shrink-0 relative z-10">
         
         <div>
           {/* Header Title / Context branding */}
-          <div className="p-6 border-b border-[#1E232F]/50 flex items-center gap-3">
+          <header role="banner" className="p-6 border-b border-[#1E232F]/50 flex items-center gap-3">
             <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-400 shadow-[0_0_20px_rgba(79,70,229,0.3)]">
-              <Scale className="w-5 h-5 text-white" />
+              <Scale className="w-5 h-5 text-white" aria-hidden="true" />
               <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border border-slate-900 bg-emerald-400 animate-pulse" />
             </div>
             <div>
               <h1 className="font-black text-md tracking-[0.25em] text-shimmer-effect leading-tight font-display">AETHERIA</h1>
               <p className="text-[9px] text-[#818EA3] font-bold uppercase tracking-[0.12em]">AI Content Adjudicator</p>
             </div>
-          </div>
+          </header>
 
           {/* Navigation Links */}
-          <nav className="p-4 space-y-1.5">
+          <div className="p-4 space-y-1.5" role="menu">
             {navigation.map((item) => {
               const Icon = item.icon;
               const isActive = activeView === item.id;
@@ -921,10 +938,10 @@ export default function App() {
                 <button
                   key={item.id}
                   onClick={() => {
-                    setActiveView(item.id as View);
+                    handleNavigate(item.id as View);
                   }}
                   className={cn(
-                    "w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-300 group",
+                    "w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-300 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500",
                     isActive 
                       ? "bg-gradient-to-r from-indigo-900/45 to-indigo-800/10 border border-indigo-700/30 text-indigo-300" 
                       : "text-slate-400 hover:text-white hover:bg-[#121622]/40 border border-transparent"
@@ -932,16 +949,16 @@ export default function App() {
                   id={`nav-link-${item.id}`}
                 >
                   <div className="flex items-center gap-3">
-                    <Icon className={cn("w-4 h-4 transition-colors", isActive ? "text-indigo-400" : "text-slate-500 group-hover:text-slate-300")} />
+                    <Icon className={cn("w-4 h-4 transition-colors", isActive ? "text-indigo-400" : "text-slate-500 group-hover:text-slate-300")} aria-hidden="true" />
                     <span className="text-sm font-medium">{item.name}</span>
                   </div>
                   {isActive && (
-                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-lg shadow-indigo-500/50" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-lg shadow-indigo-500/50" aria-hidden="true" />
                   )}
                 </button>
               );
             })}
-          </nav>
+          </div>
         </div>
 
         {/* Global Network Metrics Footer Bar */}
@@ -961,14 +978,54 @@ export default function App() {
               </span>
               <span className="font-mono">{NETWORK_METRICS.resolvedRatio} Resolved</span>
             </div>
+            
+            <div className="flex items-center gap-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider pt-2 border-t border-[#1E232F]/50">
+              <a href="#" className="hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:underline">Terms of Service</a>
+              <a href="#" className="hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:underline">Privacy Policy</a>
+              <a href="#" className="hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:underline">API Docs</a>
+            </div>
           </div>
         </div>
 
-      </aside>
+      </nav>
 
       {/* Primary Dashboard Content Panel */}
-      <main className="flex-1 bg-[#060709]/55 backdrop-blur-[3px] flex flex-col min-w-0 overflow-y-auto relative z-10">
+      <main id="main-content" role="main" className="flex-1 bg-[#060709]/55 backdrop-blur-[3px] flex flex-col min-w-0 overflow-y-auto relative z-10 pt-4">
         
+        {/* Global Dashboard Sticky Header */}
+        <div className="px-8 pb-4 flex items-center justify-between border-b border-[#1E232F]/50 sticky top-0 bg-[#060709]/90 backdrop-blur-md z-40">
+          <div>
+            <h2 className="text-2xl font-black tracking-tight text-white mb-1 flex items-center gap-2">
+              <Scale className="w-5 h-5 text-indigo-400" />
+              Consensus Dashboard
+            </h2>
+            <p className="text-xs text-slate-400 font-medium">GenLayer Protocol Adjudication Overview</p>
+          </div>
+          <div className="flex items-center gap-3 bg-[#0B0D13] px-4 py-2 rounded-xl border border-[#1E232F]/60">
+            <div className="flex flex-col text-right">
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Avg Confidence</span>
+              <span className="text-sm font-mono font-bold text-emerald-400">{NETWORK_METRICS.averageConsensusConfidence}%</span>
+            </div>
+            <TrendingUp className="w-5 h-5 text-emerald-500" />
+          </div>
+        </div>
+
+        {/* Global Loading Overlay */}
+        <AnimatePresence>
+          {isNavigating && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="absolute inset-0 z-50 bg-[#060709]/80 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none"
+            >
+              <div className="w-10 h-10 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin mb-4" />
+              <p className="text-xs font-bold text-indigo-300 uppercase tracking-widest animate-pulse">Switching Viewport</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* View Transition Matrix */}
         <AnimatePresence mode="wait">
           
@@ -983,60 +1040,85 @@ export default function App() {
               className="p-8 space-y-8"
               id="view-overview"
             >
-              {/* Heading */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-black tracking-tight text-white mb-1.5">Consensus Dashboard</h2>
-                  <p className="text-sm text-slate-400 font-medium">Verified intelligence overview of disputes, active templates, and AI originality audits.</p>
-                </div>
-                <div className="flex items-center gap-3 bg-[#0B0D13] px-4 py-2 rounded-xl border border-[#1E232F]/60">
-                  <div className="flex flex-col text-right">
-                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Avg Confidence</span>
-                    <span className="text-sm font-mono font-bold text-emerald-400">{NETWORK_METRICS.averageConsensusConfidence}%</span>
-                  </div>
-                  <TrendingUp className="w-5 h-5 text-emerald-500" />
-                </div>
-              </div>
-
               {/* Statistical Bento Section */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatMetric label="Adjudicated Disputes" value={NETWORK_METRICS.totalDisputes.toString()} desc="Resolved cases" icon={CheckCircle2} color="indigo" />
-                <StatMetric label="Escrowed Stake Limit" value={`${(NETWORK_METRICS.totalStakedGEN / 1000).toFixed(1)}k GEN`} desc="Total locked liquidity" icon={Coins} color="emerald" />
-                <StatMetric label="Validator Quorums" value={`${NETWORK_METRICS.activeValidators} Nodes`} desc="Cross-validated sets" icon={Users} color="pink" />
-                <StatMetric label="Resolvability Rate" value={NETWORK_METRICS.resolvedRatio} desc="Fast-track consensus ratio" icon={ShieldCheck} color="amber" />
+                <MetricCard title="Adjudicated Disputes" value={NETWORK_METRICS.totalDisputes} description="Resolved cases" icon={CheckCircle2} color="indigo" />
+                <MetricCard title="Escrowed Stake" value={NETWORK_METRICS.totalStakedGEN / 1000} suffix="k GEN" description="Total tokens locked as collateral by evaluating nodes." icon={Coins} color="emerald" />
+                <MetricCard title="Validator Quorums" value={NETWORK_METRICS.activeValidators} suffix=" Nodes" description="Active decentralized network validators evaluating truth claims." icon={Users} color="pink" />
+                <MetricCard title="Resolvability Rate" value={parseFloat(NETWORK_METRICS.resolvedRatio)} suffix="%" description="Fast-track consensus ratio" icon={ShieldCheck} color="amber" />
               </div>
 
               {/* Main Content Layout Block */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
                 {/* Active and Resolved Claims List */}
-                <div className="lg:col-span-2 bg-[#0B0D13]/65 backdrop-blur-md border border-[#1E232F]/45 rounded-2xl p-6 space-y-6 shadow-xl hover:border-indigo-500/15 transition-all duration-300">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold tracking-wider text-slate-400 uppercase flex items-center gap-2">
-                      <Briefcase className="w-4 h-4 text-indigo-500" />
-                      Dispute Case Log ({disputes.length})
+                <section aria-labelledby="dispute-log-heading" className="lg:col-span-2 bg-[#0B0D13]/65 backdrop-blur-md border border-[#1E232F]/45 rounded-2xl p-6 space-y-6 shadow-xl hover:border-indigo-500/15 transition-all duration-300">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <h3 id="dispute-log-heading" className="text-sm font-bold tracking-wider text-slate-400 uppercase flex items-center gap-2">
+                      <Briefcase className="w-4 h-4 text-indigo-500" aria-hidden="true" />
+                      Dispute Case Log ({filteredDisputes.length})
                     </h3>
-                    <span className="text-xs text-slate-500 font-medium">Sort: Newest First</span>
+                    
+                    <div className="flex items-center gap-3 w-full sm:w-auto" role="search" aria-label="Filter disputes">
+                      <div className="relative w-full sm:w-64">
+                        <label htmlFor="search-disputes" className="sr-only">Search disputes</label>
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" aria-hidden="true" />
+                        <input 
+                          id="search-disputes"
+                          type="text" 
+                          placeholder="Search disputes..." 
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full bg-[#121622] border border-[#1E232F] rounded-lg py-2 pl-9 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+                          aria-controls="dispute-list"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="status-filter" className="sr-only">Status</label>
+                        <select 
+                          id="status-filter"
+                          value={statusFilter}
+                          onChange={(e) => setStatusFilter(e.target.value as any)}
+                          className="bg-[#121622] border border-[#1E232F] rounded-lg py-2 px-3 text-sm text-slate-300 focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer"
+                          aria-controls="dispute-list"
+                        >
+                          <option value="ALL">All Cases</option>
+                          <option value="UNDER_AUDIT">Under Audit</option>
+                          <option value="RESOLVED">Resolved</option>
+                        </select>
+                      </div>
+                      <button 
+                        onClick={() => setIsFileModalOpen(true)}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold transition-colors whitespace-nowrap flex items-center gap-1.5 shadow-[0_0_15px_rgba(79,70,229,0.3)] shadow-indigo-500/20"
+                        aria-label="File a new dispute"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span className="hidden sm:inline">File New Dispute</span>
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="space-y-3.5">
-                    {disputes.map((disp) => {
-                      const isSelected = selectedDispute?.id === disp.id;
-                      return (
-                        <div
-                          key={disp.id}
-                          onClick={() => {
-                            setSelectedDispute(disp);
-                            setActiveView('arena');
-                          }}
-                          className={cn(
-                            "p-5 rounded-xl border transition-all duration-300 cursor-pointer hover:border-indigo-500/30 bg-[#07090E]/60 group",
-                            isSelected 
-                              ? "border-indigo-600/50 shadow-[0_0_20px_rgba(79,70,229,0.06)]" 
-                              : "border-[#1E232F]/60"
-                          )}
-                          id={`dispute-card-${disp.id}`}
-                        >
+                  <ul id="dispute-list" role="list" className="space-y-3.5 list-none p-0 m-0">
+                    {filteredDisputes.length === 0 ? (
+                      <li className="text-center py-10 text-slate-500 border border-slate-800 rounded-xl bg-slate-900/20" role="status">
+                        <p>No disputes match your search criteria.</p>
+                      </li>
+                    ) : (
+                      filteredDisputes.map((disp) => {
+                        const isSelected = selectedDispute?.id === disp.id;
+                        return (
+                        <li key={disp.id}>
+                          <button
+                            onClick={() => handleNavigate('arena', disp)}
+                            className={cn(
+                              "w-full text-left p-5 rounded-xl border transition-all duration-300 cursor-pointer hover:border-indigo-500/30 bg-[#07090E]/60 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 block",
+                              isSelected 
+                                ? "border-indigo-600/50 shadow-[0_0_20px_rgba(79,70,229,0.06)]" 
+                                : "border-[#1E232F]/60"
+                            )}
+                            id={`dispute-card-${disp.id}`}
+                            aria-label={`View audit for case ${disp.id}: ${disp.claimant} vs ${disp.respondent}`}
+                          >
                           <div className="flex flex-wrap items-start justify-between gap-2.5 mb-3">
                             <div className="space-y-0.5">
                               <span className="text-[10px] text-indigo-400 font-mono font-bold tracking-wider">{disp.id}</span>
@@ -1049,15 +1131,17 @@ export default function App() {
                               <span className={cn(
                                 "px-2 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap",
                                 disp.status === 'RESOLVED' ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
-                                disp.status === 'UNDER_AUDIT' ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20" :
-                                "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                disp.status === 'UNDER_AUDIT' ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" :
+                                "bg-slate-500/10 text-slate-400 border border-slate-500/20"
                               )}>
                                 {disp.status}
                               </span>
-                              <span className="text-[11px] text-[#A0AEC0] font-mono bg-[#181D2A] px-2 py-0.5 rounded font-semibold whitespace-nowrap">
-                                <Coins className="w-3 h-3 text-indigo-400 inline mr-1" />
-                                {disp.stakingAmount} GEN
-                              </span>
+                              <Tooltip content="Amount locked as protocol collateral during dispute">
+                                <span className="text-[11px] text-[#A0AEC0] font-mono bg-[#181D2A] px-2 py-0.5 rounded font-semibold whitespace-nowrap flex items-center">
+                                  <Coins className="w-3 h-3 text-indigo-400 mr-1" />
+                                  {disp.stakingAmount} GEN
+                                </span>
+                              </Tooltip>
                             </div>
                           </div>
 
@@ -1065,24 +1149,25 @@ export default function App() {
                             {disp.description}
                           </p>
 
-                          <div className="flex items-center justify-between text-xs text-slate-500 border-t border-[#1E232F]/40 pt-3">
+                          <div className="flex items-center justify-between text-xs text-slate-500 border-t border-[#1E232F]/40 pt-3 mt-4">
                             <div className="flex items-center gap-3">
-                              <span className="font-medium bg-[#141A29] px-2 py-1 rounded text-indigo-400">{disp.disputeType}</span>
-                              <span className="flex items-center gap-1.5">
-                                <Clock className="w-3.5 h-3.5 text-slate-600" />
+                              <span className="font-bold tracking-wide bg-[#141A29] px-2 py-1 rounded text-indigo-400">{disp.disputeType}</span>
+                              <span className="flex items-center gap-1.5 font-medium text-slate-400">
+                                <Clock className="w-3.5 h-3.5 text-slate-500" />
                                 {disp.dateSubmitted}
                               </span>
                             </div>
-                            <span className="text-indigo-400 font-bold group-hover:translate-x-1.5 transition-transform flex items-center gap-1">
+                            <span className="text-indigo-400 font-extrabold group-hover:translate-x-1.5 transition-transform flex items-center gap-1 text-[11px] uppercase tracking-wider">
                               View Audit
                               <ChevronRight className="w-3.5 h-3.5" />
                             </span>
                           </div>
-                        </div>
+                        </button>
+                        </li>
                       );
-                    })}
-                  </div>
-                </div>
+                    }))}
+                  </ul>
+                </section>
 
                 {/* Right Margin: Templates and Legal Guidance */}
                 <div className="space-y-6">
@@ -1371,7 +1456,7 @@ export default function App() {
                           type="submit"
                           className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl text-xs shadow-md shadow-emerald-600/25 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-1.5"
                         >
-                          <Zap className="w-3.5 h-3.5 animate-pulse" /> Mint Aetheria Seal
+                          <Zap className="w-3.5 h-3.5 animate-pulse" /> Mint GenLayer Seal
                         </button>
                       </form>
                     )}
@@ -1484,20 +1569,9 @@ export default function App() {
                       Protocol Adoption Rate
                     </h3>
                     <div className="h-44 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={TREND_DATA}>
-                          <defs>
-                            <linearGradient id="disputesGradient" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#6366F1" stopOpacity={0.35}/>
-                              <stop offset="95%" stopColor="#6366F1" stopOpacity={0}/>
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#161B28" vertical={false} opacity={0.5} />
-                          <XAxis dataKey="month" stroke="#64748B" fontSize={10} tickLine={false} axisLine={false} />
-                          <Tooltip contentStyle={{ backgroundColor: '#090D16', border: '1px solid rgba(99,102,241,0.25)', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.6)' }} itemStyle={{ color: '#f8fafc' }} labelStyle={{ color: '#94a3b8' }} />
-                          <Area type="monotone" dataKey="disputes" stroke="#818cf8" fill="url(#disputesGradient)" strokeWidth={2.5} />
-                        </AreaChart>
-                      </ResponsiveContainer>
+                      <Suspense fallback={<div className="h-44 w-full flex items-center justify-center text-slate-500 bg-[#0B0D13]/50 rounded-xl" />}>
+                        <LazyChartWrapper data={TREND_DATA} />
+                      </Suspense>
                     </div>
                   </div>
                 </div>
@@ -1721,7 +1795,17 @@ export default function App() {
                       <div className="bg-[#0B0D13] border border-[#1E232F]/60 rounded-2xl overflow-hidden shadow-xl">
                         <div className="bg-[#101421] p-6 border-b border-[#1E232F]/50 flex flex-wrap items-center justify-between gap-4">
                           <div className="space-y-1">
-                            <span className="text-xs font-mono text-indigo-400 font-bold">{selectedDispute.id} | Status: {selectedDispute.status}</span>
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-xs font-mono text-indigo-400 font-bold">{selectedDispute.id}</span>
+                              <span className={cn(
+                                "px-2 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap",
+                                selectedDispute.status === 'RESOLVED' ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
+                                selectedDispute.status === 'UNDER_AUDIT' ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" :
+                                "bg-slate-500/10 text-slate-400 border border-slate-500/20"
+                              )}>
+                                {selectedDispute.status}
+                              </span>
+                            </div>
                             <h3 className="text-lg font-extrabold text-white tracking-tight">{selectedDispute.claimant} vs {selectedDispute.respondent}</h3>
                           </div>
 
@@ -1947,7 +2031,7 @@ export default function App() {
               id="view-specs"
             >
               <div>
-                <h2 className="text-2xl font-black tracking-tight text-white mb-1.5">Aetheria & GenLayer Protocol Stack</h2>
+                <h2 className="text-2xl font-black tracking-tight text-white mb-1.5">GenLayer & GenLayer Protocol Stack</h2>
                 <p className="text-sm text-slate-400 font-medium">Detailed integration roadmap describing how Natural Language Adjudication runs over GenLayer.</p>
               </div>
 
@@ -1960,7 +2044,7 @@ export default function App() {
                   </div>
                   <h3 className="font-bold text-white text-md">Intelligent Contract Logic</h3>
                   <p className="text-sm text-slate-400 leading-relaxed font-normal">
-                    Traditional blockchains represent deterministic VMs (EVM, SVM) which cannot evaluate language. Aetheria encapsulates dispute mediation rules directly within GenLayer Python-based contracts. Contracts programmatically route incoming claim logs directly to LLM validator sub-routines.
+                    Traditional blockchains represent deterministic VMs (EVM, SVM) which cannot evaluate language. GenLayer encapsulates dispute mediation rules directly within GenLayer Python-based contracts. Contracts programmatically route incoming claim logs directly to LLM validator sub-routines.
                   </p>
                 </div>
 
@@ -2000,7 +2084,7 @@ export default function App() {
               <div className="bg-[#0B0D13] border border-[#1E232F]/60 rounded-2xl p-6 space-y-4">
                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
                   <Layers className="w-4 h-4 text-indigo-500" />
-                  Aetherian Protocol Enhancements (GEP Specs)
+                  GenLayern Protocol Enhancements (GEP Specs)
                 </h3>
                 
                 <div className="space-y-4 font-normal">
@@ -2026,6 +2110,11 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Validator Node Topology Graph */}
+              <div className="bg-[#0B0D13] border border-[#1E232F]/60 rounded-2xl p-6 shadow-xl">
+                <ValidatorNodeGraph />
+              </div>
+
             </motion.div>
           )}
 
@@ -2044,7 +2133,7 @@ export default function App() {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest border border-indigo-500/20">Aetheria Economics</span>
+                    <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest border border-indigo-500/20">GenLayer Economics</span>
                     <span className="text-[10px] text-slate-500 font-medium">Author: yuyus</span>
                   </div>
                   <h2 className="text-2xl font-black tracking-tight text-white mb-1.5">Monetization & Business Matrix</h2>
@@ -2079,7 +2168,7 @@ export default function App() {
                       Capturing Value in the Agentic Economy
                     </h3>
                     <p className="text-sm text-slate-400 leading-relaxed font-normal">
-                      Aetheria’s monetization strategy is designed to capture value across the entire generative media lifecycle. 
+                      GenLayer’s monetization strategy is designed to capture value across the entire generative media lifecycle. 
                       By leveraging GenLayer’s unique adjudication capabilities, we supply services that traditional systems cannot support, 
                       providing clear pricing signals and on-chain guarantees that scale with AI agent-to-agent interactions.
                     </p>
@@ -2206,7 +2295,7 @@ export default function App() {
                         </ul>
                       </div>
                       <button 
-                        onClick={() => showToast("Free tier is active by default.", "info")}
+                        onClick={() => toast("Free tier is active by default.", { icon: 'ℹ️' })}
                         className="w-full py-2.5 rounded-xl border border-[#1E232F]/80 text-xs font-bold hover:bg-[#121622] transition-colors mt-6"
                       >
                         Active Free Core
@@ -2243,7 +2332,7 @@ export default function App() {
                         </ul>
                       </div>
                       <button 
-                        onClick={() => showToast("Pro Studio checkout triggered over simulated gateway.", "success")}
+                        onClick={() => toast.success("Pro Studio checkout triggered over simulated gateway.")}
                         className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs text-white font-bold shadow-md hover:scale-[1.01] transition-all mt-6"
                       >
                         Upgrade to Pro
@@ -2277,7 +2366,7 @@ export default function App() {
                         </ul>
                       </div>
                       <button 
-                        onClick={() => showToast("Connected agent-wallet to coordinate recurring licensing contracts.", "success")}
+                        onClick={() => toast.success("Connected agent-wallet to coordinate recurring licensing contracts.")}
                         className="w-full py-2.5 rounded-xl border border-indigo-500/30 text-[11px] text-indigo-400 font-bold hover:bg-[#121622] hover:border-indigo-500/50 transition-colors mt-6"
                       >
                         License Agency Matrix
@@ -2297,7 +2386,7 @@ export default function App() {
                     <div className="space-y-5">
                       <h3 className="text-md font-extrabold text-white">White-Label API & Enterprise Integrations</h3>
                       <p className="text-sm text-slate-400 leading-relaxed">
-                        Large distribution channels can plug Aetheria’s adjudication or originality auditing engine directly into their native digital interfaces via a white-label REST gateway. This saves significant overhead costs for internal moderation teams.
+                        Large distribution channels can plug GenLayer’s adjudication or originality auditing engine directly into their native digital interfaces via a white-label REST gateway. This saves significant overhead costs for internal moderation teams.
                       </p>
 
                       <div className="space-y-4 pt-3">
@@ -2313,7 +2402,7 @@ export default function App() {
                           <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">ORIGINALITY LOCK</span>
                           <h4 className="text-sm font-bold text-white mt-1">Marketplace Pre-Verification</h4>
                           <p className="text-xs text-slate-400 leading-relaxed">
-                            Websites selling visual assets, templates or synthesized music models use Aetheria as the final notary checkpoint prior to listing on marketplace registries.
+                            Websites selling visual assets, templates or synthesized music models use GenLayer as the final notary checkpoint prior to listing on marketplace registries.
                           </p>
                         </div>
                       </div>
@@ -2330,7 +2419,7 @@ export default function App() {
                         <div className="bg-[#07090F] p-4 rounded-xl border border-[#1E232F]/60 space-y-2.5 font-mono text-xs select-text">
                           <div className="text-slate-600">// Initiate automated model plagiarism check</div>
                           <div className="text-slate-100">
-                            <span className="text-indigo-400">POST</span> https://api.aetheria.network/v1/adjudicate
+                            <span className="text-indigo-400">POST</span> https://api.genlayer.network/v1/adjudicate
                           </div>
                           <div className="text-slate-500">{`{`}</div>
                           <div className="text-slate-100 pl-4">
@@ -2425,7 +2514,7 @@ export default function App() {
                       </div>
                       <h4 className="text-sm font-bold text-white uppercase tracking-tight">DAO Treasury Accrual</h4>
                       <p className="text-xs text-slate-400 leading-relaxed font-normal">
-                        A persistent 10% fee on every simulated transaction is redirected straight to the Aetheria DAO Treasury, funding core developers, marketing programs and open research initiatives.
+                        A persistent 10% fee on every simulated transaction is redirected straight to the GenLayer DAO Treasury, funding core developers, marketing programs and open research initiatives.
                       </p>
                     </div>
 
@@ -2435,7 +2524,7 @@ export default function App() {
                       </div>
                       <h4 className="text-sm font-bold text-white uppercase tracking-tight">Constant Token Sink</h4>
                       <p className="text-xs text-slate-400 leading-relaxed font-normal">
-                        Since all platform fees and certifications must occur strictly inside GEN tokens, Aetheria acts as an absolute utility sink, removing circulating supply as demand for AI resolution expands.
+                        Since all platform fees and certifications must occur strictly inside GEN tokens, GenLayer acts as an absolute utility sink, removing circulating supply as demand for AI resolution expands.
                       </p>
                     </div>
 
@@ -2592,7 +2681,7 @@ export default function App() {
 
                         {/* Interactive trigger */}
                         <button
-                          onClick={() => showToast(`Consensus economic scenario cached! Token lockup velocity: ${(( (montyDisputes * 50) + (montyCertifications * 15) )).toLocaleString()} GEN.`, "success")}
+                          onClick={() => toast.success(`Consensus economic scenario cached! Token lockup velocity: ${(( (montyDisputes * 50) + (montyCertifications * 15) )).toLocaleString()} GEN.`)}
                           className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition-colors shadow-md shadow-indigo-600/30"
                         >
                           Commit Scenario parameters to Protocol sandbox
@@ -2605,6 +2694,72 @@ export default function App() {
                 </div>
               )}
 
+            </motion.div>
+          )}
+
+          {/* VIEW: ABOUT GENLAYER */}
+          {activeView === 'about' && (
+            <motion.div
+              key="about"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.3 }}
+              className="p-8 space-y-8 max-w-5xl mx-auto"
+              id="view-about"
+            >
+              {/* Heading */}
+              <div>
+                <h2 className="text-3xl font-black tracking-tight text-white mb-2">About GenLayer Intelligence Hub</h2>
+                <p className="text-sm text-slate-400 font-medium">Empowering decentralized AI consensus and cryptographic trust.</p>
+              </div>
+
+              <div className="space-y-8 bg-[#0B0D13]/65 backdrop-blur-md border border-[#1E232F]/45 rounded-2xl p-8 shadow-xl">
+                
+                <section className="space-y-4">
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Globe className="w-5 h-5 text-indigo-400" />
+                    What is GenLayer?
+                  </h3>
+                  <p className="text-slate-300 leading-relaxed text-sm">
+                    GenLayer is a decentralized protocol built to enable on-chain intelligence. Traditional blockchains excel at deterministic execution, but often lack the semantic understanding necessary to evaluate complex, natural-language scenarios (such as copyright infringement, originality disputes, or qualitative assessments). GenLayer introduces <strong>Intelligent Contracts</strong>, which leverage powerful LLM (Large Language Model) validators to reach a consensus on subjective data.
+                  </p>
+                </section>
+
+                <hr className="border-[#1E232F]" />
+                
+                <section className="space-y-4">
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-emerald-400" />
+                    The Intelligence Hub
+                  </h3>
+                  <p className="text-slate-300 leading-relaxed text-sm">
+                    The Intelligence Hub acts as the primary visual interface and dispute resolution dashboard for the GenLayer ecosystem. It allows users and autonomous agents to file claims, audit originality proofs, and observe the democratic consensus timeline across diverse AI validator networks. By bridging the gap between sophisticated LLM processing and an accessible UI, the Hub provides total transparency into how subjective claims are being evaluated on-chain.
+                  </p>
+                </section>
+
+                <hr className="border-[#1E232F]" />
+
+                <section className="space-y-4">
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-amber-400" />
+                    How Consensus Works
+                  </h3>
+                  <div className="space-y-3">
+                    <p className="text-slate-300 leading-relaxed text-sm">
+                      Our consensus mechanism ensures that no single AI model dictates the outcome of a complex dispute. The process involves:
+                    </p>
+                    <ol className="list-decimal list-inside space-y-2 text-slate-400 text-sm ml-2">
+                      <li><strong className="text-slate-200">Evidence Submission:</strong> Claims are submitted with digital signatures and stored securely.</li>
+                      <li><strong className="text-slate-200">Escrow Locking:</strong> Protocol fees and stakes (GEN tokens) are escrowed automatically (e.g., using the HTTP 402 Payment Required pattern).</li>
+                      <li><strong className="text-slate-200">Validator Sub-Routines:</strong> Multiple independent AI validators (such as Gemini-Flash, Llama, Claude) evaluate the evidence against predefined contract criteria independently.</li>
+                      <li><strong className="text-slate-200">Optimistic Democracy:</strong> The protocol aggregates the votes. If a quorum is reached and sufficient confidence is attained, the dispute is marked <code>RESOLVED</code>.</li>
+                      <li><strong className="text-slate-200">Cryptographic Seal:</strong> The outcome is cryptographically notarized, acting as a permanent and verifiable proof.</li>
+                    </ol>
+                  </div>
+                </section>
+
+              </div>
             </motion.div>
           )}
 
@@ -2667,7 +2822,7 @@ export default function App() {
               <div className="bg-[#07090F] p-3 rounded-xl border border-[#1E232F]/80 font-mono text-[10.5px] text-slate-500 space-y-1 select-text mb-5">
                 <div><span className="text-indigo-400">HTTP/1.1</span> <span className="text-pink-400">402 Payment Required</span></div>
                 <div><span className="text-slate-500">Location:</span> <span className="text-emerald-400">genlayer://x402-escrow-contract-v1</span></div>
-                <div><span className="text-slate-500">X-Aetheria-Filing-ID:</span> <span className="text-indigo-400">{pendingDispute.id}</span></div>
+                <div><span className="text-slate-500">X-GenLayer-Filing-ID:</span> <span className="text-indigo-400">{pendingDispute.id}</span></div>
               </div>
 
               {/* Staking Fee details card matrix */}
@@ -2690,7 +2845,7 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center justify-between text-xs py-3">
-                    <span className="text-slate-400">Aetheria Network Service Fee:</span>
+                    <span className="text-slate-400">GenLayer Network Service Fee:</span>
                     <span className="text-indigo-400 font-mono font-semibold">
                       15 GEN
                     </span>
@@ -2898,75 +3053,33 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Absolute Floating Toast System */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: 50, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.9 }}
-            className={cn(
-              "fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4.5 py-3.5 rounded-xl border shadow-2xl backdrop-blur-md max-w-sm font-sans",
-              toast.type === 'success' ? "bg-emerald-950/95 border-emerald-500/35 text-emerald-300 shadow-emerald-500/5" :
-              toast.type === 'error' ? "bg-red-950/95 border-red-500/35 text-red-300 shadow-red-500/5" :
-              "bg-[#090D1A]/95 border-indigo-500/35 text-indigo-300 shadow-indigo-500/5"
-            )}
-          >
-            {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />}
-            {toast.type === 'error' && <XCircle className="w-5 h-5 text-red-400 shrink-0" />}
-            {toast.type === 'info' && <Info className="w-5 h-5 text-indigo-400 shrink-0" />}
-            <span className="text-xs font-semibold leading-relaxed tracking-wide">{toast.message}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <FileDisputeModal 
+        open={isFileModalOpen} 
+        onClose={() => setIsFileModalOpen(false)}
+        onSubmitMock={(data) => {
+          // You could optionally add the new dispute to the list
+          const created: Dispute = {
+            id: `DISP-${Math.floor(1000 + Math.random() * 9000)}`,
+            claimant: 'You',
+            respondent: 'Unknown',
+            disputeType: data.title,
+            status: 'QUEUED',
+            description: data.description,
+            evidence: data.contentUrl || 'No evidence provided',
+            stakingAmount: data.escrowStake,
+            dateSubmitted: new Date().toISOString().split('T')[0]
+          };
+          setDisputes(prev => [created, ...prev]);
+        }}
+      />
+
+      <AetheriaAgentChat />
+      <Toaster position="top-right" toastOptions={{ style: { background: '#1e293b', color: '#f1f5f9', borderRadius: '8px' } }} />
     </div>
   );
 }
 
-// Simple Helper Component: Numerical Stat Card
-function StatMetric({ label, value, desc, icon: Icon, color }: { label: string; value: string; desc: string; icon: any; color: 'indigo' | 'emerald' | 'amber' | 'pink' }) {
-  const colorMap = {
-    indigo: 'from-indigo-600/15 via-indigo-600/5 to-transparent text-indigo-400 border-indigo-500/20 hover:border-indigo-400/40 shadow-indigo-950/20',
-    emerald: 'from-emerald-600/15 via-emerald-600/5 to-transparent text-emerald-400 border-emerald-500/20 hover:border-emerald-400/40 shadow-emerald-950/20',
-    pink: 'from-pink-600/15 via-pink-600/5 to-transparent text-pink-400 border-pink-500/20 hover:border-pink-400/40 shadow-pink-950/20',
-    amber: 'from-amber-600/15 via-amber-600/5 to-transparent text-amber-400 border-amber-500/20 hover:border-amber-400/40 shadow-amber-950/20',
-  };
 
-  const glowMap = {
-    indigo: 'rgba(99,102,241,0.06)',
-    emerald: 'rgba(16,185,129,0.06)',
-    pink: 'rgba(236,72,153,0.06)',
-    amber: 'rgba(245,158,11,0.06)',
-  };
-
-  return (
-    <div 
-      className={cn(
-        "bg-gradient-to-br px-5 py-5 border rounded-2xl transition-all duration-300 hover:scale-[1.02] hover:-translate-y-0.5 relative overflow-hidden backdrop-blur-md shadow-lg group", 
-        colorMap[color]
-      )}
-      style={{
-        boxShadow: `0 4px 20px rgba(0,0,0,0.45), 0 0 15px ${glowMap[color]}`
-      }}
-    >
-      {/* Background Interactive Radial Ring */}
-      <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full opacity-0 group-hover:opacity-15 transition-opacity duration-500 bg-current blur-xl pointer-events-none" />
-      
-      <div className="flex items-center justify-between mb-2.5">
-        <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase leading-none">{label}</span>
-        <div className="p-1.5 bg-[#0F111A]/80 rounded-lg border border-white/5 group-hover:border-white/10 transition-all duration-300">
-          <Icon className="w-4 h-4 leading-none" />
-        </div>
-      </div>
-      <div className="text-2xl font-black tracking-tight text-white mb-1.5 leading-none font-sans">
-        {value}
-      </div>
-      <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider leading-none">
-        {desc}
-      </p>
-    </div>
-  );
-}
 
 // Simple Helper Component: Substantial Similarity Score Progress Display
 function SimilarityProgress({ label, score, color }: { label: string; score: number; color: 'emerald' | 'indigo' | 'amber' }) {
